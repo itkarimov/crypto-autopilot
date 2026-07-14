@@ -206,14 +206,14 @@ def main():
     # отчёт: тихий режим — шлём только при событиях или в плановые сводки
     # (08:02 и 19:02 по Бишкеку = 05 и 16 по серверному МСК)
     now = time.localtime()
-    # еженедельный самоанализ: понедельник, первый тик после 09:00 Бишкек (06:00 сервер МСК)
-    if now.tm_wday == 0 and now.tm_hour == 6 and now.tm_min < 15:
+    # самоанализ КАЖДЫЕ 3 ДНЯ, первый тик после 09:00 Бишкек (06:00 сервер МСК)
+    if now.tm_yday % 3 == 0 and now.tm_hour == 6 and now.tm_min < 15:
         try:
             from self_analysis import fmt as _analysis
-            send(_analysis(7))
-            log("weekly self-analysis sent")
+            send(_analysis(3))
+            log("3-day self-analysis sent")
         except Exception as e:
-            log(f"weekly analysis error: {e}")
+            log(f"analysis error: {e}")
     scheduled_summary = now.tm_hour in (5, 16) and now.tm_min < 5  # только первый тик часа, чтобы сводка не дублировалась при любом ритме (5/15/30 мин)
     if not (actions or alerts or scheduled_summary):
         log(f"heartbeat equity={bal['totalEquity']:.2f} (тихо, событий нет)")
