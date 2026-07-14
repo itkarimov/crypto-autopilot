@@ -197,17 +197,11 @@ def main():
                 if not runaway:
                     p.pop("runaway_alerted", None)  # цена вернулась — сброс, следующий отрыв уведомит заново
                 elif not p.get("runaway_alerted"):
+                    # «убежал вверх» = ничего делать не надо (не догоняем), поэтому НЕ дёргаем в бот, только лог
                     p["runaway_alerted"] = True
                     up = (last / p["rebuy_price"] - 1) * 100
                     ob = overbought_signals(sym, last)
-                    if ob:  # перекуплен у сопротивления — догонять НЕ советую
-                        alerts.append(f"{coin}: продали с прибылью, цена убежала на +{up:.1f}%, но она "
-                                      f"ПЕРЕКУПЛЕНА ({', '.join(ob)}). Догонять на вершине не советую — "
-                                      f"ждём отката до {p['rebuy_price']:.4g}. По стратегии верно, ничего не делаем.")
-                    else:  # чистый импульс, не перекуплен — оставляю выбор
-                        alerts.append(f"{coin}: продали, цена убежала на +{up:.1f}% на чистом импульсе "
-                                      f"(не перекуплена). Ждём отката до {p['rebuy_price']:.4g}; если хочешь "
-                                      f"догнать — команда «докупи {coin} <сумма>». Спрошу только раз.")
+                    log(f"{coin} RUNAWAY +{up:.1f}% {'перекуплен' if ob else 'чистый импульс'} — ждём откат (тихо)")
 
         # строка отчёта
         if p.get("status") == "rebuy":
@@ -241,13 +235,12 @@ def main():
                     alerts.append(f"{coin} подешевел на {chg:.1f}% и ПЕРЕПРОДАН у дна ({', '.join(os_sig)}), "
                                   f"тренд не обвальный — хорошая точка докупки.\nВзять на ${buy_amt}? «да»/«нет» 👇")
                 elif buyable:
-                    alerts.append(f"{coin} перепродан у дна ({', '.join(os_sig)}) — хорошая докупка, "
-                                  f"но свободных USDT мало (${free:.2f}).")
+                    # хорошая точка, но нет денег — не действие для тебя, в лог
+                    log(f"{coin} DIP {chg:.1f}% перепродан, но мало USDT (${free:.2f}) — тихо")
                 else:
-                    reason = (f"сильный тренд вниз (ADX {trend_strength:.0f})" if strong_downtrend
-                              else "признаков дна пока нет (не перепродан, не у поддержки)")
-                    alerts.append(f"{coin} подешевел на {chg:.1f}%, но {reason} — докупку придержал, "
-                                  f"нож не ловлю. Жду перепроданности у поддержки.")
+                    # придержали докупку (нож/нет дна) = ничего не делаем — в лог, не в бот
+                    reason = f"ADX {trend_strength:.0f}" if strong_downtrend else "нет признаков дна"
+                    log(f"{coin} DIP {chg:.1f}% придержал ({reason}) — тихо")
 
     with open(STATE_FILE, "w", encoding="utf-8") as f:
         json.dump(state, f, ensure_ascii=False, indent=2)
