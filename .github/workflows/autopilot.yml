@@ -1,0 +1,49 @@
+name: Bybit Autopilot Brain
+
+on:
+  schedule:
+    - cron: "13 * * * *"   # каждый час в :13 UTC (GitHub может задерживать на 5-15 мин)
+  workflow_dispatch: {}     # ручной запуск кнопкой
+
+concurrency:
+  group: autopilot
+  cancel-in-progress: false
+
+jobs:
+  brain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup SSH key for server
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.BEGET_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "${{ secrets.SERVER_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Build .env from secrets
+        run: |
+          cat > autopilot/.env << EOF
+          BYBIT_API_KEY=${{ secrets.BYBIT_API_KEY }}
+          BYBIT_API_SECRET=${{ secrets.BYBIT_API_SECRET }}
+          BYBIT_ENV=mainnet
+          TG_BOT_TOKEN=${{ secrets.TG_BOT_TOKEN }}
+          TG_CHAT_ID=${{ secrets.TG_CHAT_ID }}
+          EOF
+
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Run brain
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          SERVER_SSH: ${{ secrets.SERVER_SSH }}   # user@host для SSH на твой сервер
+          SERVER_DIR: ${{ secrets.SERVER_DIR }}   # папка бота на сервере (абсолютный путь)
+          SERVER_PY:  ${{ secrets.SERVER_PY }}    # путь к python3 на сервере
+          GITHUB_REPO: ${{ github.repository }}
+        run: |
+          claude -p "$(cat AUTOPILOT_CI.md)" \
+            --permission-mode bypassPermissions \
+            --max-turns 40 2>&1 | tail -40

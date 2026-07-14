@@ -1,0 +1,8 @@
+{
+  "updated": "2026-01-01",
+  "positions": {
+    "SOL": {"symbol": "SOLUSDT", "qty": 0, "spent_usdt": 0, "entry": 0, "tp": 0, "status": "holding"}
+  },
+  "start_equity": 100.0,
+  "start_date": "2026-01-01"
+}

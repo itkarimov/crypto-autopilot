@@ -1,0 +1,13 @@
+.env
+autopilot/.env
+server/config.php
+*.key
+*_deploy_key
+bot_queue.txt
+inbox.txt
+trade_log.txt
+cron.log
+pending.json
+PAUSED
+__pycache__/
+positions.json

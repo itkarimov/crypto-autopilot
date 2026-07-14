@@ -1,0 +1,52 @@
+name: Answer Question
+
+on:
+  workflow_dispatch:
+    inputs:
+      question:
+        description: "Вопрос пользователя"
+        required: true
+
+concurrency:
+  group: answer
+  cancel-in-progress: false
+
+jobs:
+  answer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup SSH key for Beget
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.BEGET_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "${{ secrets.SERVER_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Build .env from secrets
+        run: |
+          cat > autopilot/.env << EOF
+          BYBIT_API_KEY=${{ secrets.BYBIT_API_KEY }}
+          BYBIT_API_SECRET=${{ secrets.BYBIT_API_SECRET }}
+          BYBIT_ENV=mainnet
+          TG_BOT_TOKEN=${{ secrets.TG_BOT_TOKEN }}
+          TG_CHAT_ID=${{ secrets.TG_CHAT_ID }}
+          EOF
+
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Answer the question
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          USER_QUESTION: ${{ github.event.inputs.question }}
+          SERVER_SSH: ${{ secrets.SERVER_SSH }}
+          SERVER_DIR: ${{ secrets.SERVER_DIR }}
+          SERVER_PY:  ${{ secrets.SERVER_PY }}
+        run: |
+          PROMPT="$(cat ANSWER_CI.md)
+
+          ВОПРОС ПОЛЬЗОВАТЕЛЯ: $USER_QUESTION"
+          claude -p "$PROMPT" --permission-mode bypassPermissions --max-turns 30 2>&1 | tail -30
