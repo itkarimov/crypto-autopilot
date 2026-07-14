@@ -16,7 +16,7 @@ BASE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, BASE)
 from bybit_client import balances, get, instrument, post, pub, spot_order
 from levels import klines, nearest_resistance, nearest_support
-from indicators import adx, chandelier_trailing, ema, rsi
+from indicators import adx, bollinger, chandelier_trailing, ema, rsi, stochastic
 from fng import dip_multiplier, label as fng_label
 from tg import send
 
@@ -46,6 +46,40 @@ def fmt_price(symbol, price):
 
 def last_price(symbol):
     return float(pub("/v5/market/tickers", {"category": "spot", "symbol": symbol})["result"]["list"][0]["lastPrice"])
+
+
+def overbought_signals(sym, last):
+    """Признаки перекупленности у сопротивления (1h). Непустой список = вершина, догонять не стоит."""
+    k = klines(sym, "60", 120)
+    bb, r, st = bollinger(k), rsi(k), stochastic(k)
+    nr = nearest_resistance(sym, last)
+    s = []
+    if bb and bb["pctb"] >= 1.0:
+        s.append("выше полосы Боллинджера")
+    if r and r >= 70:
+        s.append(f"RSI {r:.0f}")
+    if st and st["k"] >= 80:
+        s.append(f"стохастик {st['k']:.0f}")
+    if nr and last >= nr * 0.995:
+        s.append(f"у сопротивления {nr:.4g}")
+    return s
+
+
+def oversold_signals(sym, last):
+    """Признаки перепроданности у поддержки (1h). Непустой список = дно рядом, докупка осмысленна."""
+    k = klines(sym, "60", 120)
+    bb, r, st = bollinger(k), rsi(k), stochastic(k)
+    ns = nearest_support(sym, last)
+    s = []
+    if bb and bb["pctb"] <= 0.0:
+        s.append("ниже полосы Боллинджера")
+    if r and r <= 35:
+        s.append(f"RSI {r:.0f}")
+    if st and st["k"] <= 20:
+        s.append(f"стохастик {st['k']:.0f}")
+    if ns and last <= ns * 1.005:
+        s.append(f"у поддержки {ns:.4g}")
+    return s
 
 
 def main():
@@ -164,9 +198,16 @@ def main():
                     p.pop("runaway_alerted", None)  # цена вернулась — сброс, следующий отрыв уведомит заново
                 elif not p.get("runaway_alerted"):
                     p["runaway_alerted"] = True
-                    alerts.append(f"{coin}: продали с прибылью, ждём отката до {p['rebuy_price']:.4g} для откупа, "
-                                  f"но цена ушла на {(last / p['rebuy_price'] - 1) * 100:+.1f}% вверх и не падает.\n"
-                                  f"Ответь «догоняем» (откуплю по рынку) или «ждём» (жду отката). Спрошу только раз.")
+                    up = (last / p["rebuy_price"] - 1) * 100
+                    ob = overbought_signals(sym, last)
+                    if ob:  # перекуплен у сопротивления — догонять НЕ советую
+                        alerts.append(f"{coin}: продали с прибылью, цена убежала на +{up:.1f}%, но она "
+                                      f"ПЕРЕКУПЛЕНА ({', '.join(ob)}). Догонять на вершине не советую — "
+                                      f"ждём отката до {p['rebuy_price']:.4g}. По стратегии верно, ничего не делаем.")
+                    else:  # чистый импульс, не перекуплен — оставляю выбор
+                        alerts.append(f"{coin}: продали, цена убежала на +{up:.1f}% на чистом импульсе "
+                                      f"(не перекуплена). Ждём отката до {p['rebuy_price']:.4g}; если хочешь "
+                                      f"догнать — команда «докупи {coin} <сумма>». Спрошу только раз.")
 
         # строка отчёта
         if p.get("status") == "rebuy":
@@ -183,28 +224,30 @@ def main():
                 p.pop("dip_alerted", None)  # цена выше порога — сброс, следующий провал уведомит заново
             elif not p.get("dip_alerted"):  # уведомляем ОДИН раз за падение, без спама каждый тик
                 p["dip_alerted"] = True
-                mood = " (рынок в страхе — хорошая точка!)" if _dip_mult > 1.1 else ""
                 free = bal.get("USDT", {}).get("qty", 0)
                 buy_amt = min(6, round(free, 2))
-                # ADX-фильтр (из стратегии Vega): не усредняем на сильном падающем тренде
+                # смотрим индикаторы, а не только «упало на X%»
                 k4 = klines(sym, "240", 120)
                 trend_strength = adx(k4) or 0
                 ema20 = ema(k4, 20) or last
-                strong_downtrend = trend_strength >= 40 and last < ema20
-                if strong_downtrend:
-                    alerts.append(f"{coin} подешевел на {chg:.1f}%, НО это сильный тренд вниз "
-                                  f"(ADX {trend_strength:.0f}) — усреднять опасно, можно ловить нож. "
-                                  f"Жду замедления падения, докупку придержал.")
-                elif buy_amt >= 5:
-                    # заготавливаем действие: ответишь «да» в боте — докупит сразу
+                strong_downtrend = trend_strength >= 40 and last < ema20   # обвальный тренд — нож
+                os_sig = oversold_signals(sym, last)                        # признаки дна
+                buyable = bool(os_sig) and not strong_downtrend            # докупаем только на перепроданности БЕЗ обвала
+                if buyable and buy_amt >= 5:
                     with open(os.path.join(BASE, "pending.json"), "w", encoding="utf-8") as pf:
                         json.dump({"ts": int(time.time()),
                                    "question": f"докупить {coin} на ${buy_amt}",
                                    "action": {"type": "buy", "symbol": sym, "coin": coin, "usdt": buy_amt}}, pf)
-                    alerts.append(f"{coin} подешевел на {chg:.1f}% от покупки{mood}, тренд спокойный "
-                                  f"(ADX {trend_strength:.0f}).\nДокупить на ${buy_amt}? Ответь «да» или «нет» 👇")
+                    alerts.append(f"{coin} подешевел на {chg:.1f}% и ПЕРЕПРОДАН у дна ({', '.join(os_sig)}), "
+                                  f"тренд не обвальный — хорошая точка докупки.\nВзять на ${buy_amt}? «да»/«нет» 👇")
+                elif buyable:
+                    alerts.append(f"{coin} перепродан у дна ({', '.join(os_sig)}) — хорошая докупка, "
+                                  f"но свободных USDT мало (${free:.2f}).")
                 else:
-                    alerts.append(f"{coin} подешевел на {chg:.1f}% от покупки{mood}, но свободных USDT мало (${free:.2f}).")
+                    reason = (f"сильный тренд вниз (ADX {trend_strength:.0f})" if strong_downtrend
+                              else "признаков дна пока нет (не перепродан, не у поддержки)")
+                    alerts.append(f"{coin} подешевел на {chg:.1f}%, но {reason} — докупку придержал, "
+                                  f"нож не ловлю. Жду перепроданности у поддержки.")
 
     with open(STATE_FILE, "w", encoding="utf-8") as f:
         json.dump(state, f, ensure_ascii=False, indent=2)
