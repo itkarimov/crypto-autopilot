@@ -206,7 +206,7 @@ def main():
     # отчёт: тихий режим — шлём только при событиях или в плановые сводки
     # (08:02 и 19:02 по Бишкеку = 05 и 16 по серверному МСК)
     now = time.localtime()
-    scheduled_summary = now.tm_hour in (5, 16) and now.tm_min < 30
+    scheduled_summary = now.tm_hour in (5, 16) and now.tm_min < 15  # только один тик (:02), не дублировать при 15-мин кроне
     if not (actions or alerts or scheduled_summary):
         log(f"heartbeat equity={bal['totalEquity']:.2f} (тихо, событий нет)")
         print(time.strftime("%H:%M") + f" heartbeat equity={bal['totalEquity']:.2f}")  # в cron.log для контроля живости
