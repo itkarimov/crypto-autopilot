@@ -92,6 +92,7 @@ def main():
                     p["status"] = "rebuy"
                     p["budget"] = round(proceeds, 4)
                     p["rebuy_price"] = float(pr_str)
+                    p.pop("runaway_alerted", None)  # новый цикл откупа — сброс дедупа алерта «цена убежала»
                     profit_usd = proceeds - p.get("spent_usdt", proceeds)
                     actions.append(
                         f"💰 <b>{coin}: зафиксировал прибыль!</b>\n"
@@ -157,10 +158,15 @@ def main():
                     actions.append(f"♻️ {coin}: заявка на обратную покупку пропала — выставил заново: {qty_str} шт по {pr_str}")
                     log(f"{coin} REBUY_RESTORED {qty_str}@{pr_str}")
             else:
-                # откуп висит; если цена убежала вверх >3.5% от лимитки — алерт
-                if last > p.get("rebuy_price", last) * 1.035:
-                    alerts.append(f"{coin}: продали, ждём отката для обратной покупки по {p['rebuy_price']:.4g}, "
-                                  f"но цена ушла вверх на {(last / p['rebuy_price'] - 1) * 100:+.1f}% и не падает. Нужно решение: догонять или ждать")
+                # откуп висит; цена убежала вверх >3.5% от лимитки — алерт ОДИН раз (без спама)
+                runaway = last > p.get("rebuy_price", last) * 1.035
+                if not runaway:
+                    p.pop("runaway_alerted", None)  # цена вернулась — сброс, следующий отрыв уведомит заново
+                elif not p.get("runaway_alerted"):
+                    p["runaway_alerted"] = True
+                    alerts.append(f"{coin}: продали с прибылью, ждём отката до {p['rebuy_price']:.4g} для откупа, "
+                                  f"но цена ушла на {(last / p['rebuy_price'] - 1) * 100:+.1f}% вверх и не падает.\n"
+                                  f"Ответь «догоняем» (откуплю по рынку) или «ждём» (жду отката). Спрошу только раз.")
 
         # строка отчёта
         if p.get("status") == "rebuy":
