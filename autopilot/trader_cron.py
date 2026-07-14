@@ -206,8 +206,8 @@ def main():
     # отчёт: тихий режим — шлём только при событиях или в плановые сводки
     # (08:02 и 19:02 по Бишкеку = 05 и 16 по серверному МСК)
     now = time.localtime()
-    # самоанализ КАЖДЫЕ 3 ДНЯ, первый тик после 09:00 Бишкек (06:00 сервер МСК)
-    if now.tm_yday % 3 == 0 and now.tm_hour == 6 and now.tm_min < 15:
+    # самоанализ КАЖДЫЕ 3 ДНЯ в 21:00 Бишкек (18:00 сервер МСК), первый тик часа
+    if now.tm_yday % 3 == 0 and now.tm_hour == 18 and now.tm_min < 15:
         try:
             from self_analysis import fmt as _analysis
             send(_analysis(3))
