@@ -22,7 +22,7 @@ LOG = os.path.join(BASE, "trade_log.txt")
 
 WHITELIST = {"SOL": "SOLUSDT", "LINK": "LINKUSDT", "UNI": "UNIUSDT", "ETH": "ETHUSDT",
              "XRP": "XRPUSDT", "LTC": "LTCUSDT", "AVAX": "AVAXUSDT", "DOT": "DOTUSDT",
-             "ADA": "ADAUSDT", "NEAR": "NEARUSDT"}
+             "ADA": "ADAUSDT", "NEAR": "NEARUSDT", "AAVE": "AAVEUSDT"}
 YES = {"да", "давай", "ага", "докупить", "докупи", "купи", "покупай", "ок", "окей", "+", "го", "yes"}
 NO = {"нет", "не", "не надо", "ждать", "жди", "отмена", "стоп", "-", "no", "пропусти"}
 
