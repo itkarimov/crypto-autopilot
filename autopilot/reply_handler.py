@@ -165,6 +165,11 @@ def main():
         os.system(f'cd "{BASE}" && "{sys.executable}" report_now.py')
         return
 
+    # 4b. Самоанализ сделок (обучение на истории)
+    if words[0] in ("анализ", "статистика", "аналитика", "разбор"):
+        os.system(f'cd "{BASE}" && "{sys.executable}" self_analysis.py')
+        return
+
     # 5. Свободный текст = ВОПРОС → будим GitHub-мозг, он ответит в бот через пару минут
     with open(INBOX, "a", encoding="utf-8") as f:
         f.write(time.strftime("%Y-%m-%d %H:%M:%S ") + raw + "\n")
