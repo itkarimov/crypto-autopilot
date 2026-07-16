@@ -146,8 +146,27 @@ def main():
                                    f"продам по {tp:.4g} (это {(tp / p['entry'] - 1) * 100:+.1f}% к цене покупки)")
                     log(f"{coin} TP_RESTORED {tp}")
             elif held_usd >= 1.0 and sells:
+                # ЛЕСТНИЦА: докупился по грид-уровню — тейк покрывает не всю позицию → расширить
+                sell_qty = sum(float(o["qty"]) for o in sells)
+                if held_qty > sell_qty * 1.02 and held_qty * last >= 5.5:
+                    for o in sells:
+                        post("/v5/order/cancel", {"category": "spot", "symbol": sym, "orderId": o["orderId"]})
+                    open_buy_val = sum(float(o["qty"]) * float(o["price"]) for o in buys)
+                    spent = max(p.get("budget", held_qty * last) - open_buy_val, held_qty * last * 0.9)
+                    p["entry"] = round(spent / held_qty, 6)
+                    tp = float(fmt_price(sym, max(nearest_resistance(sym, last), p["entry"] * 1.008)))
+                    r = spot_order(sym, "Sell", "Limit", fmt_qty(sym, held_qty), price=fmt_price(sym, tp))
+                    if r.get("retCode") == 0:
+                        p["tp"] = tp
+                        p["qty"] = held_qty
+                        actions.append(f"🪜 <b>{coin}: докупился по сетке!</b> Теперь {held_qty:.3f} шт "
+                                       f"(средняя ~{p['entry']:.4g}). Тейк расширен: продам всё по {tp:.4g}.")
+                        log(f"{coin} LADDER_FILL -> TP extended {tp} qty {held_qty}")
+                    continue_trailing = False
+                else:
+                    continue_trailing = True
                 # ТРЕЙЛИНГ: цена подошла к тейку на сильном тренде — ведём тейк выше, не продаём
-                near_tp = last >= p["tp"] * (1 - TRAIL_NEAR)
+                near_tp = continue_trailing and last >= p["tp"] * (1 - TRAIL_NEAR)
                 strong = rsi(klines(sym, "240", 100)) >= TRAIL_RSI
                 trail = chandelier_trailing(klines(sym, "240", 100))
                 if near_tp and strong and trail and trail > p["tp"]:
@@ -165,19 +184,22 @@ def main():
                             log(f"{coin} TRAIL {old} -> {new_tp}")
         else:  # rebuy
             if held_usd >= 1.0:
-                # откуп исполнился -> новый TP
-                entry = p["budget"] / held_qty if held_qty > 0 else p.get("rebuy_price", last)
-                tp = float(fmt_price(sym, nearest_resistance(sym, last)))
+                # откуп исполнился (возможно, частично — лестница) -> новый TP на купленное
+                open_buy_val = sum(float(o["qty"]) * float(o["price"]) for o in buys)  # неисполненные уровни
+                spent = max(p.get("budget", held_usd) - open_buy_val, held_qty * last * 0.85)
+                entry = spent / held_qty if held_qty > 0 else p.get("rebuy_price", last)
+                tp = float(fmt_price(sym, max(nearest_resistance(sym, last), entry * 1.008)))
                 r = spot_order(sym, "Sell", "Limit", fmt_qty(sym, held_qty), price=fmt_price(sym, tp))
                 if r.get("retCode") == 0:
                     p.update(qty=held_qty, entry=round(entry, 6), tp=tp,
-                             spent_usdt=p.get("budget", held_usd), status="holding")
+                             spent_usdt=round(spent, 2), status="holding")
                     p.pop("rebuy_price", None)
+                    tail = f" (ещё {len(buys)} уровн. сетки ждут ниже)" if buys else ""
                     actions.append(
                         f"🛒 <b>{coin}: купил обратно дешевле!</b>\n"
-                        f"Взял {held_qty:.3f} шт по ~{entry:.4g}.\n"
+                        f"Взял {held_qty:.3f} шт по ~{entry:.4g}{tail}.\n"
                         f"Новая цель: продам по {tp:.4g}, будет ещё {(tp / entry - 1) * 100:+.1f}% прибыли.")
-                    log(f"{coin} REBOUGHT {held_qty}@{entry} TP {tp}")
+                    log(f"{coin} REBOUGHT {held_qty}@{entry:.6g} TP {tp} ladder_left={len(buys)}")
                 else:
                     alerts.append(f"{coin}: откуплено, но TP не выставился: {r.get('retMsg')}")
             elif not buys:
