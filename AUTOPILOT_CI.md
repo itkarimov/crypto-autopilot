@@ -32,8 +32,12 @@
   ssh ${SERVER_SSH} 'cd ${SERVER_DIR} && ${SERVER_PY} analyze_levels.py'
 Ордера — тоже на сервере, однострочником через bybit_client (пример покупки на 5 USDT):
   ssh ${SERVER_SSH} 'cd ${SERVER_DIR} && ${SERVER_PY} -c "from bybit_client import spot_order; print(spot_order(\"SOLUSDT\", \"Buy\", \"Market\", \"5\"))"'
-Отправка в TG — тоже с сервера (tg.py там есть):
-  ssh ${SERVER_SSH} 'cd ${SERVER_DIR} && ${SERVER_PY} -c "from tg import send; send(\"текст\")"'
+Отправка в TG — тоже с сервера (tg.py там есть). ⚠️ Кириллицу аргументом в кавычках НЕ
+передавай — шелл shared-хостинга может её порезать. Текст — только через stdin, и РОВНО
+ОДНО сообщение (никакого транслита и повторов «на всякий случай»):
+ssh ${SERVER_SSH} 'cd ${SERVER_DIR} && ${SERVER_PY} -c "import sys; from tg import send; send(sys.stdin.read().strip())"' <<'EOF'
+текст по-русски
+EOF
 Локальные скрипты в autopilot/ НЕ запускай для Bybit — получишь 403.
 WebSearch (новости) работает нормально прямо на раннере — им пользуйся локально.
 
