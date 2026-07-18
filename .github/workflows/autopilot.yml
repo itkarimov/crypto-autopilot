@@ -11,6 +11,8 @@ concurrency:
 
 jobs:
   brain:
+    # Предохранитель: в самом репо-шаблоне (без секретов) не запускаемся — только в копиях.
+    if: github.repository != 'itkarimov/crypto-autopilot'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
